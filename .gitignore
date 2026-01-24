@@ -1,0 +1,8 @@
+target/
+*.log
+.env
+.env.local
+
+# Private Claude Code instructions (not for public)
+CLAUDE.md
+progress_actual.md
