@@ -1,68 +1,116 @@
-# Backlog — embedded-device-bootstrapping
+# Backlog: RPi5 Bootstrap Scripts
 
-## RPi5 Services to Bootstrap
+Services and configs currently running on RPi5 that need bootstrap scripts for disaster recovery.
 
-These services are currently running on the RPi5 but have no bootstrap script in this repo yet. Adding them enables full disaster recovery (re-flash SD card → run scripts → everything works).
+## Priority 1: Network Stack (Hotspot Infrastructure)
 
-### Network Stack
+### Fix hotspot-setup oneshot service
+- **What**: `hotspot-setup.service` is a oneshot that runs before hostapd
+- **Does**: Creates virtual `wlan0_ap` interface, assigns `192.168.50.1/24`, brings it up
+- **Script on Pi**: `/usr/local/bin/setup-hotspot.sh`
+- **Action**: Add `bootstrap/rpi5/hotspot-interface.sh` + systemd unit
+- **Current content**:
+  ```bash
+  iw dev wlan0 interface add wlan0_ap type __ap
+  ip addr add 192.168.50.1/24 dev wlan0_ap
+  ip link set wlan0_ap up
+  ```
 
-- [ ] **Fix hotspot-setup oneshot service**
-  - Current `setup-hotspot.sh` in repo installs hostapd/dnsmasq but misses the `hotspot-setup.service` systemd oneshot
-  - Oneshot creates virtual `wlan0_ap` interface (`iw dev wlan0 interface add wlan0_ap type __ap`) and assigns `192.168.50.1/24`
-  - Must run Before=hostapd.service
-  - Note: current repo dnsmasq.conf uses `192.168.4.x` range but live Pi uses `192.168.50.1/24` — reconcile
+### Add uplink-monitor service
+- **What**: `uplink-monitor.service` auto-switches default route between eth0 and wlan0
+- **Does**: Checks every 10s if eth0 has carrier+IP, switches default route accordingly
+- **Script on Pi**: `/usr/local/bin/uplink-monitor.sh`
+- **Action**: Add `bootstrap/rpi5/uplink-monitor.sh` + systemd unit
 
-- [ ] **uplink-monitor service**
-  - Script: `/usr/local/bin/uplink-monitor.sh` — auto-switches default route between eth0 and wlan0 every 10s
-  - Systemd unit: `uplink-monitor.service` (Type=simple, Restart=always)
-  - Add as `bootstrap/rpi5/uplink-monitor.sh` + service template
+### Add iptables NAT + forwarding rules
+- **What**: Hotspot clients get internet via eth0 or wlan0
+- **Rules**:
+  - FORWARD: `wlan0_ap → eth0`, `wlan0_ap → wlan0` (+ ESTABLISHED return)
+  - NAT POSTROUTING: MASQUERADE on eth0 and wlan0
+- **Persisted via**: `netfilter-persistent`
+- **Action**: Add `bootstrap/rpi5/setup-nat.sh` (install netfilter-persistent, write rules, save)
 
-- [ ] **iptables NAT + forwarding rules**
-  - FORWARD: `wlan0_ap → eth0`, `wlan0_ap → wlan0` (+ RELATED,ESTABLISHED return)
-  - NAT MASQUERADE: on `eth0` and `wlan0`
-  - Persisted via `netfilter-persistent` (`apt install iptables-persistent netfilter-persistent`)
-  - Add as `bootstrap/rpi5/setup-firewall.sh`
+### Add wpa_supplicant template for home WiFi
+- **What**: `wpa_supplicant-wlan0.conf` connects wlan0 to home WiFi as internet uplink
+- **Secrets**: SSID + PSK → `%%WIFI_CLIENT_SSID%%`, `%%WIFI_CLIENT_PSK%%`
+- **Action**: Add `bootstrap/rpi5/wpa_supplicant.conf.template`
 
-- [ ] **wpa_supplicant template for home WiFi**
-  - Current: `/etc/wpa_supplicant/wpa_supplicant-wlan0.conf` with plaintext PSK
-  - Add template: `bootstrap/rpi5/wpa_supplicant.conf.template` with `%%WIFI_PSK%%` placeholder
-  - Country: IN, key_mgmt: WPA-PSK
+## Priority 2: NAS Stack
 
-### NAS Stack
+### Add NAS USB drive fstab entries
+- **What**: Three USB drives auto-mounted at boot
+- **Drives**:
+  - Samsung T7 SSD (exfat) → `/mnt/nas/t7` (UUID=02F7-B675)
+  - WD Elements HDD (ntfs-3g) → `/mnt/nas/elements` (UUID=B896919A969159A8)
+  - Android drive (exfat) → `/mnt/nas/android` (varies)
+- **Packages**: `exfat-fuse ntfs-3g`
+- **Action**: Add `bootstrap/rpi5/setup-nas-mounts.sh` (install packages, mkdir, add fstab entries with `nofail`)
+- **Note**: UUIDs are drive-specific — script should detect or accept as args
 
-- [ ] **NAS drive mounts (fstab entries)**
-  - Samsung T7 (exfat): `UUID=02F7-B675 /mnt/nas/t7 exfat defaults,nofail,uid=1000,gid=1000 0 0`
-  - WD Elements (ntfs-3g): `UUID=B896919A969159A8 /mnt/nas/elements ntfs-3g defaults,nofail,uid=1000,gid=1000 0 0`
-  - Android phone (exfat): mounted at `/mnt/nas/android` (intermittent)
-  - Need: `mkdir -p /mnt/nas/{t7,elements,android}`, append to fstab, install `ntfs-3g exfat-utils`
-  - Add as `bootstrap/rpi5/setup-nas-mounts.sh`
+### Add Samba setup
+- **What**: SMB file sharing of `/mnt/nas` for `pi` user
+- **Packages**: `samba`
+- **Config**: Custom `[nas]` share section in `smb.conf`
+- **Action**: Add `bootstrap/rpi5/setup-samba.sh` + `smb-nas.conf.template`
+- **Sets up**: `smbpasswd` for pi user (interactive or from env)
 
-- [ ] **Samba file sharing**
-  - Custom section in `/etc/samba/smb.conf`: `[nas]` share at `/mnt/nas`, valid users = pi
-  - Install: `apt install samba`
-  - Set samba password: `smbpasswd -a pi`
-  - Add as `bootstrap/rpi5/setup-samba.sh` + `bootstrap/rpi5/smb-nas.conf` (appended to default config)
+### Add Filebrowser setup
+- **What**: Web UI for NAS files at `0.0.0.0:8080`, serves `/mnt/nas`
+- **Binary**: `/usr/local/bin/filebrowser` v2.55.0 (installed via curl script)
+- **DB**: `/home/pi/.config/filebrowser/filebrowser.db`
+- **Action**: Add `bootstrap/rpi5/setup-filebrowser.sh` (download binary, create systemd unit, enable)
+- **Install**: `curl -fsSL https://raw.githubusercontent.com/filebrowser/get/master/get.sh | bash`
 
-- [ ] **Filebrowser web UI**
-  - Binary: `/usr/local/bin/filebrowser` v2.55.0
-  - Serves `/mnt/nas` on `0.0.0.0:8080`, DB at `/home/pi/.config/filebrowser/filebrowser.db`
-  - Install: download binary from GitHub releases
-  - Systemd unit: `filebrowser.service` (User=pi)
-  - Add as `bootstrap/rpi5/setup-filebrowser.sh`
+## Priority 3: DNS / Ad-blocking
 
-### Application Services (NOT in this repo — reference only)
+### Pi-hole (deferred)
+- **What**: DNS ad-blocking via `pihole-FTL`
+- **Install**: Has its own installer (`curl -sSL https://install.pi-hole.net | bash`)
+- **Action**: Document install command + post-install config in a setup script
+- **Note**: Pi-hole installer is interactive; bootstrap script would call it and then apply config
 
-- [ ] **pibox-server** — stays in `pibox` repo (Rust binary at `/usr/local/bin/pibox-server`)
-  - Depends on filebrowser, listens on `0.0.0.0:9280`
-  - Deploy via cross-compilation + SCP from pibox repo
+## Priority 4: Application Services
 
-- [ ] **Pi-hole** — use official installer (`curl -sSL https://install.pi-hole.net | bash`)
-  - DNS ad-blocking, runs as `pihole-FTL` service
-  - Current version: Core v6.3, Web v6.4, FTL v6.4.1
-  - Consider: document post-install config (upstream DNS, blocklists) but don't script the install itself
+### pibox-server (separate repo)
+- **What**: WebSocket server for NAS management, depends on Filebrowser
+- **Binary**: `/usr/local/bin/pibox-server` (Rust, cross-compiled)
+- **Action**: Stays in pibox repo — deploy via `deploy/deploy.sh` after Filebrowser is up
+- **Systemd unit**: Already documented above, deploy script handles it
 
-### Future
+## Implementation Order
 
-- [ ] **RAID setup** for NAS drives (research needed — mdadm vs btrfs vs mergerfs+snapraid)
-- [ ] **Google Takeout data management** — browse, validate against cloud, selective deletion
-- [ ] **Reverse SSH tunnel** — if RPi5 needs external access (use `bootstrap/common/tunnel-setup.sh`)
+1. `setup-nat.sh` + iptables rules (hotspot won't route without this)
+2. `hotspot-interface.sh` + oneshot service (fix current partial coverage)
+3. `wpa_supplicant.conf.template` (WiFi uplink)
+4. `uplink-monitor.sh` + service (auto-switch)
+5. `setup-nas-mounts.sh` (fstab + packages)
+6. `setup-samba.sh` (NAS sharing)
+7. `setup-filebrowser.sh` (web UI)
+8. Pi-hole documentation (last — least critical for recovery)
+
+## Full Recovery Sequence
+
+After flashing with `flash/flash-sd.sh --profile rpi5`:
+
+```bash
+# 1. Base setup
+ssh pi@IP 'bash -s' < bootstrap/common/base-setup.sh
+
+# 2. Network stack
+ssh pi@IP 'WIFI_CLIENT_SSID=x WIFI_CLIENT_PSK=y bash -s' < bootstrap/rpi5/setup-wpa-client.sh
+ssh pi@IP 'bash -s' < bootstrap/rpi5/hotspot-interface.sh   # installs oneshot service
+ssh pi@IP 'WIFI_SSID=x WIFI_PASSPHRASE=y bash -s' < bootstrap/rpi5/setup-hotspot.sh
+ssh pi@IP 'bash -s' < bootstrap/rpi5/setup-nat.sh
+ssh pi@IP 'bash -s' < bootstrap/rpi5/setup-uplink-monitor.sh
+
+# 3. NAS stack
+ssh pi@IP 'bash -s' < bootstrap/rpi5/setup-nas-mounts.sh
+ssh pi@IP 'bash -s' < bootstrap/rpi5/setup-samba.sh
+ssh pi@IP 'bash -s' < bootstrap/rpi5/setup-filebrowser.sh
+
+# 4. Apps (from their own repos)
+./deploy/deploy.sh --host pi@IP --service pibox ...
+
+# 5. Optional
+# Pi-hole: curl -sSL https://install.pi-hole.net | bash
+```
