@@ -1,92 +1,75 @@
-# pibox - Embedded Device Bootstrapping
+# embedded-device-bootstrapping
 
-A Rust workspace for managing and orchestrating embedded devices (NAS, cameras, sensors) via WebSocket communication. Provides both TUI and GUI clients.
+Shell scripts and config templates for flashing, bootstrapping, and deploying to Raspberry Pi devices (RPi5, Pi Zero 2W).
 
-## Architecture
+## Pipeline
 
 ```
-┌─────────────┐     WebSocket      ┌─────────────────┐
-│  pibox-tui  │◄──────────────────►│  pibox-server   │
-│  pibox-gui  │                    │  (on device)    │
-└─────────────┘                    └────────┬────────┘
-                                            │ REST
-                                   ┌────────▼────────┐
-                                   │   Filebrowser   │
-                                   │    backend      │
-                                   └─────────────────┘
+Flash SD card → First-boot setup → Deploy application
 ```
 
-## Crates
+### 1. Flash SD Card
 
-| Crate | Description |
-|-------|-------------|
-| `pibox-core` | Shared library: protocol types, JWT auth, state machine, config |
-| `pibox-server` | WebSocket server that runs on embedded devices |
-| `pibox-tui` | Terminal UI client with vim keybindings |
-| `pibox-gui` | Iced-based graphical client |
-
-## Features
-
-- **WebSocket protocol** - Real-time bidirectional communication
-- **JWT authentication** - Access and refresh tokens with secure rotation
-- **File management** - Browse, upload, download via Filebrowser backend
-- **State machine** - Undo/redo support for file operations
-- **Multi-device** - Manage multiple devices from one client
-- **Cross-platform** - Linux, macOS, Windows client support
-
-## Configuration
-
-Config is stored in platform-appropriate locations:
-- Linux: `~/.config/pibox/config.toml`
-- macOS: `~/Library/Application Support/pibox/config.toml`
-- Windows: `%APPDATA%\pibox\config.toml`
-
-Example:
-```toml
-[server]
-listen_addr = "0.0.0.0"
-ws_port = 9280
-filebrowser_url = "http://127.0.0.1:8080"
-
-[client]
-theme = "dark"
-vim_mode = true
-confirm_delete = true
-
-[[devices]]
-name = "nas"
-url = "ws://192.0.2.10:9280"
-device_type = "nas"
-```
-
-## Building
+Download Raspberry Pi OS, flash to SD card, and configure for the target device:
 
 ```bash
-# Build all crates
-cargo build --release
+# Pi Zero 2W (USB gadget network)
+sudo ./flash/flash-sd.sh --device /dev/mmcblk0 --profile pi-zero-2w
 
-# Build specific crate
-cargo build -p pibox-tui --release
+# RPi5 with WiFi and static IP
+sudo ./flash/flash-sd.sh --device /dev/mmcblk0 --profile rpi5 \
+  --wifi "MyNetwork" "password" --static-ip 192.168.29.10/24
+
+# Or use Docker (no repeated sudo)
+docker build -t pi-flasher flash/
+docker run --rm -it --privileged -v /dev:/dev -v ~/Downloads:/downloads \
+  pi-flasher flash-sd --device /dev/mmcblk0 --profile pi-zero-2w --force
 ```
 
-## Running
+### 2. Bootstrap Device
+
+Run on the Pi after first boot:
 
 ```bash
-# Server (on embedded device)
-./pibox-server
+# Common setup (packages, SSH keys)
+ssh pi@10.55.0.2 'bash -s' < bootstrap/common/base-setup.sh
 
-# TUI client
-./pibox-tui
+# Device-specific
+ssh pi@10.55.0.2 'bash -s' < bootstrap/common/tunnel-setup.sh  # Reverse SSH tunnel
+ssh pi@192.168.29.10 'WIFI_SSID=Net WIFI_PASSPHRASE=pass bash -s' < bootstrap/rpi5/setup-hotspot.sh
 
-# GUI client
-./pibox-gui
+# Laptop-side USB network (for Pi Zero 2W)
+./bootstrap/pi-zero-2w/laptop-setup.sh
 ```
 
-## Default Ports
+### 3. Deploy Application
 
-- WebSocket server: `9280`
-- Filebrowser backend: `8080` (localhost only)
+Push files and install systemd service:
 
-## License
+```bash
+./deploy/deploy.sh \
+  --host pi@10.55.0.2 \
+  --files "src/app.py src/config.py" \
+  --service my-app \
+  --exec-start "/home/pi/my-app/venv/bin/python /home/pi/my-app/app.py"
+```
 
-MIT
+## Structure
+
+```
+flash/              SD card flashing (runs on host)
+bootstrap/
+  common/           Shared first-boot scripts (runs on device)
+  rpi5/             RPi5-specific (hotspot, configs)
+  pi-zero-2w/       Pi Zero 2W-specific (USB gadget network)
+deploy/             Push code to devices (runs on host)
+configs/            Per-device env templates
+```
+
+## Device Profiles
+
+| Profile | USB Gadget | Default IP | Default Hostname |
+|---------|-----------|------------|------------------|
+| `pi-zero-2w` | Yes (dwc2, g_ether) | 10.55.0.2 | pi-keyboard |
+| `rpi5` | No | User-specified | pi-hub |
+| `generic` | No | DHCP | raspberrypi |
