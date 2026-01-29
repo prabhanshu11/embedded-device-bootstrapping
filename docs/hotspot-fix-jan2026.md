@@ -32,42 +32,39 @@ sudo pihole-FTL --config dhcp.active true
 sudo systemctl restart pihole-FTL
 ```
 
-### 3. WPA2 EAPOL 4-way handshake failure (UNRESOLVED)
+### 3. WPA2 EAPOL 4-way handshake failure (RESOLVED)
 
 After fixing DHCP, clients still couldn't connect. Verbose hostapd logging (`logger_syslog_level=0`) revealed the WPA2 4-way handshake was timing out:
 
 ```
-wlan0: STA 3a:0e:cd:71:d0:8f WPA: sending 1/4 msg of 4-Way Handshake
-wlan0: STA 3a:0e:cd:71:d0:8f WPA: EAPOL-Key timeout
-wlan0: STA 3a:0e:cd:71:d0:8f WPA: sending 1/4 msg of 4-Way Handshake
-wlan0: STA 3a:0e:cd:71:d0:8f WPA: EAPOL-Key timeout
+wlan0_ap: STA 3a:0e:cd:71:d0:8f WPA: sending 1/4 msg of 4-Way Handshake
+wlan0_ap: STA 3a:0e:cd:71:d0:8f WPA: EAPOL-Key timeout
 ... (4 retries)
-wlan0: STA 3a:0e:cd:71:d0:8f WPA: PTKSTART: Retry limit 4 reached
-wlan0: STA 3a:0e:cd:71:d0:8f MLME: MLME-DEAUTHENTICATE.indication (reason 15)
+wlan0_ap: STA 3a:0e:cd:71:d0:8f WPA: PTKSTART: Retry limit 4 reached
 ```
 
-hostapd sends EAPOL message 1/4 but the client never responds with message 2/4. The frames aren't being delivered at the radio/firmware level.
+hostapd sends EAPOL message 1/4 but the client never responds with message 2/4. The frames weren't being delivered at the radio/firmware level when using the `wlan0_ap` virtual interface.
 
-**Things tried (all failed):**
+**Things tried during debugging:**
 - Stopped `wpa_supplicant@wlan0` (was potentially intercepting EAPOL frames)
 - Stopped D-Bus `wpa_supplicant` service
 - Brought `wlan0` down while using `wlan0_ap` virtual interface
-- Switched hostapd from `wlan0_ap` (virtual) to `wlan0` directly
 - Enabled `wmm_enabled=1` (some phones require WMM for WPA2)
 - Reloaded brcmfmac kernel module (`rmmod brcmfmac_wcc brcmfmac && modprobe brcmfmac`)
+- Tested open AP (no WPA) — connected instantly, confirming radio works
 
-**Open network works:** Removing all WPA config from hostapd allows clients to connect immediately, proving the radio hardware is functional. The issue is specifically EAPOL frame delivery in AP mode.
+**Fix:** Switched hostapd from `wlan0_ap` (virtual) to `wlan0` directly, stopped `wpa_supplicant@wlan0`, and reloaded the brcmfmac module. After the module reload settled, WPA2 handshakes complete reliably on `wlan0`. The root cause was the `wlan0_ap` virtual AP interface — brcmfmac firmware does not properly deliver EAPOL frames through virtual interfaces in AP mode.
 
 **Firmware:** BCM4345/6 (brcmfmac), version 7.45.265 (Aug 29 2023), Cypress.
 
 ## Current State
 
-- **hostapd:** Running on `wlan0` directly (not virtual `wlan0_ap`)
-- **SSID:** Prabhanshu-Test (OPEN, no WPA2)
+- **hostapd:** Running on `wlan0` directly via systemd (not virtual `wlan0_ap`)
+- **SSID:** Prabhanshu (WPA2-PSK, password: cherryrocks)
 - **DHCP:** Pi-hole FTL, range 192.168.50.10-250, gateway 192.168.50.1
 - **dhcpcd.conf:** Has `denyinterfaces wlan0_ap` (still useful if reverting to virtual interface)
 - **Pi-hole interface:** `dns.interface = wlan0`
-- **wpa_supplicant:** Stopped (was interfering, not needed since eth0 is uplink)
+- **wpa_supplicant@wlan0:** Disabled (conflicts with hostapd on wlan0, not needed since eth0 is uplink)
 
 ## Architecture Change: wlan0_ap -> wlan0
 
@@ -85,12 +82,12 @@ The bootstrap scripts originally used a virtual AP interface (`wlan0_ap`) create
 
 ## TODO
 
-- [ ] Fix WPA2 EAPOL handshake (firmware update? different hostapd version? external USB WiFi adapter?)
+- [x] Fix WPA2 EAPOL handshake — resolved by using wlan0 directly instead of wlan0_ap
 - [ ] Update `setup-hotspot.sh` to use `wlan0` instead of `wlan0_ap`
 - [ ] Update `hostapd.conf.template` to use `wlan0`
 - [ ] Remove dependency on standalone dnsmasq (Pi-hole FTL handles DHCP)
-- [ ] Consider: Update hotspot-setup.service to not create wlan0_ap
-- [ ] Investigate: Does `rpi-update` provide newer brcmfmac firmware that fixes EAPOL?
+- [ ] Update hotspot-setup.service to not create wlan0_ap (or remove it entirely)
+- [ ] Disable `wpa_supplicant@wlan0` in bootstrap scripts (conflicts with hostapd on wlan0)
 
 ## Services on Pi (reference)
 

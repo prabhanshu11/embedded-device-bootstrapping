@@ -1,9 +1,9 @@
-interface=wlan0_ap
+interface=wlan0
 driver=nl80211
 ssid=%%WIFI_SSID%%
 hw_mode=g
 channel=6
-wmm_enabled=0
+wmm_enabled=1
 macaddr_acl=0
 auth_algs=1
 wpa=2
@@ -12,3 +12,5 @@ wpa_key_mgmt=WPA-PSK
 rsn_pairwise=CCMP
 country_code=IN
 ieee80211n=1
+logger_syslog_level=0
+ctrl_interface=/var/run/hostapd
