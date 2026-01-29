@@ -4,3 +4,8 @@
 *_actual*
 progress_actual.md
 target/
+
+# Sensitive: IP addresses, credentials, device-specific secrets
+hosts.local
+inventory.local
+secrets/
