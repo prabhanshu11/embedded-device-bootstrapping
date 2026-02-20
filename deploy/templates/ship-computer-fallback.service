@@ -1,0 +1,9 @@
+[Unit]
+Description=Ship Computer Fallback (desktop monitor)
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ship-computer-fallback
+TimeoutStartSec=30
