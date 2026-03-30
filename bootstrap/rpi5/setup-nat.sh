@@ -1,7 +1,7 @@
 #!/bin/bash
 # Set up NAT and IP forwarding for hotspot clients
 #
-# Routes traffic from wlan0 (hotspot) to eth0 (internet uplink).
+# Routes traffic from wlan0_ap (hotspot) to eth0 (internet uplink).
 # Persisted via netfilter-persistent.
 #
 # Usage: ssh pi@<IP> 'bash -s' < bootstrap/rpi5/setup-nat.sh
@@ -34,9 +34,9 @@ sudo iptables -F FORWARD
 # NAT: masquerade outgoing traffic on eth0
 sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
 
-# Forward: allow hotspot clients to reach internet via eth0
-sudo iptables -A FORWARD -i wlan0 -o eth0 -j ACCEPT
-sudo iptables -A FORWARD -i eth0 -o wlan0 -m state --state RELATED,ESTABLISHED -j ACCEPT
+# Forward: allow hotspot clients (wlan0_ap) to reach internet via eth0
+sudo iptables -A FORWARD -i wlan0_ap -o eth0 -j ACCEPT
+sudo iptables -A FORWARD -i eth0 -o wlan0_ap -m state --state RELATED,ESTABLISHED -j ACCEPT
 
 # Save rules
 sudo netfilter-persistent save
@@ -44,6 +44,6 @@ sudo netfilter-persistent save
 echo ""
 echo "=== NAT Setup Complete ==="
 echo "  - IP forwarding: enabled"
-echo "  - NAT: wlan0 -> eth0 (MASQUERADE)"
-echo "  - Forward: wlan0 <-> eth0 (stateful)"
+echo "  - NAT: wlan0_ap -> eth0 (MASQUERADE)"
+echo "  - Forward: wlan0_ap <-> eth0 (stateful)"
 echo "  - Rules persisted via netfilter-persistent"

@@ -18,7 +18,11 @@ echo "[1/2] Installing uplink-monitor.sh..."
 sudo tee /usr/local/bin/uplink-monitor.sh > /dev/null << 'SCRIPT'
 #!/bin/bash
 # Uplink Monitor - Auto-detect and switch between Ethernet and WiFi uplink
-# Hotspot stays on regardless of uplink mode
+# Hotspot (wlan0_ap) stays on regardless of uplink mode.
+#
+# Boot race fix: uses dhcpcd's DHCP-assigned gateway instead of deriving
+# from the routing table. Prevents 169.254.0.1 link-local gateway bug
+# when dhcpcd hasn't obtained a lease yet.
 
 LOG_FILE=/var/log/uplink-mode.log
 CHECK_INTERVAL=10
@@ -33,31 +37,38 @@ eth0_has_carrier() {
     [ "$(cat /sys/class/net/eth0/carrier 2>/dev/null)" = "1" ]
 }
 
+# Only count routable IPs (exclude 169.254.x.x link-local)
 eth0_has_ip() {
-    ip addr show eth0 2>/dev/null | grep -q 'inet '
+    ip addr show eth0 2>/dev/null | grep 'inet ' | grep -qv '169.254'
 }
 
 wlan0_has_ip() {
-    ip addr show wlan0 2>/dev/null | grep -q 'inet '
+    ip addr show wlan0 2>/dev/null | grep 'inet ' | grep -qv '169.254'
 }
 
 switch_to_ethernet() {
     if [ "$CURRENT_MODE" != "ETHERNET" ]; then
         log "Switching to ETHERNET uplink"
-        ip route del default via $(ip route | grep 'default.*wlan0' | awk '{print $3}') 2>/dev/null
-        GATEWAY=$(ip route | grep 'eth0' | grep -v default | head -1 | awk '{print $1}' | sed 's|/.*||' | awk -F. '{print $1"."$2"."$3".1"}')
-        if [ -n "$GATEWAY" ]; then
-            ip route add default via "$GATEWAY" dev eth0 metric 100 2>/dev/null || true
+        # Remove wlan0 default route if exists
+        ip route del default dev wlan0 2>/dev/null
+        # Use the DHCP-assigned gateway (set by dhcpcd, marked proto dhcp)
+        GATEWAY=$(ip route | grep 'default.*eth0.*proto dhcp' | head -1 | awk '{print $3}')
+        if [ -z "$GATEWAY" ]; then
+            log "WARNING: No DHCP gateway on eth0 yet, waiting"
+            return
         fi
+        ip route replace default via "$GATEWAY" dev eth0 metric 100 2>/dev/null || true
         CURRENT_MODE="ETHERNET"
-        log "Now using ETHERNET uplink"
+        log "Now using ETHERNET uplink (gateway: $GATEWAY)"
     fi
 }
 
 switch_to_wifi() {
     if [ "$CURRENT_MODE" != "WIFI" ]; then
         log "Switching to WIFI uplink"
-        ip route del default via $(ip route | grep 'default.*eth0' | awk '{print $3}') 2>/dev/null
+        # Remove eth0 default route added by this script (metric 100)
+        ip route del default dev eth0 metric 100 2>/dev/null
+        # dhcpcd's wlan0 route (proto dhcp) remains
         CURRENT_MODE="WIFI"
         log "Now using WIFI uplink"
     fi

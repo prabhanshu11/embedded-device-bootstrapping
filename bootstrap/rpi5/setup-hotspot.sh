@@ -1,9 +1,9 @@
 #!/bin/bash
 # Set up WiFi hotspot on Raspberry Pi 5 using hostapd + Pi-hole FTL (DHCP)
 #
-# Architecture: hostapd runs directly on wlan0 (not virtual wlan0_ap).
-# brcmfmac firmware does not deliver EAPOL frames through virtual AP interfaces.
-# Trade-off: no WiFi client fallback — Pi relies on eth0 for uplink.
+# Architecture: hostapd runs on wlan0_ap (virtual AP interface).
+# wlan0 stays free for potential STA mode (WiFi client fallback).
+# Pi-hole FTL handles DHCP on the hotspot subnet.
 #
 # Usage: ssh pi@<IP> 'bash -s' < bootstrap/rpi5/setup-hotspot.sh
 #   Or: ssh pi@<IP> 'WIFI_SSID=MyNet WIFI_PASSPHRASE=secret bash -s' < bootstrap/rpi5/setup-hotspot.sh
@@ -43,7 +43,7 @@ sudo systemctl disable wpa_supplicant@wlan0 2>/dev/null || true
 echo "[3/5] Configuring hostapd..."
 
 sudo tee /etc/hostapd/hostapd.conf > /dev/null << TMPL
-interface=wlan0
+interface=wlan0_ap
 driver=nl80211
 ssid=${WIFI_SSID}
 hw_mode=g
@@ -63,10 +63,11 @@ TMPL
 
 echo "  - Installed hostapd config with SSID: $WIFI_SSID"
 
-# === Assign AP IP to wlan0 ===
-echo "[4/5] Assigning hotspot IP..."
-sudo ip addr add 192.168.50.1/24 dev wlan0 2>/dev/null || true
-sudo ip link set wlan0 up
+# === Create virtual AP interface and assign IP ===
+echo "[4/5] Creating wlan0_ap and assigning hotspot IP..."
+sudo iw dev wlan0 interface add wlan0_ap type __ap 2>/dev/null || true
+sudo ip addr add 192.168.50.1/24 dev wlan0_ap 2>/dev/null || true
+sudo ip link set wlan0_ap up
 
 # === Enable and start hostapd ===
 echo "[5/5] Enabling hostapd..."
@@ -78,7 +79,7 @@ echo ""
 echo "=== Hotspot Setup Complete ==="
 echo ""
 echo "SSID: $WIFI_SSID"
-echo "AP Interface: wlan0"
+echo "AP Interface: wlan0_ap"
 echo "Gateway: 192.168.50.1"
 echo ""
 echo "NOTE: DHCP is handled by Pi-hole FTL, not dnsmasq."

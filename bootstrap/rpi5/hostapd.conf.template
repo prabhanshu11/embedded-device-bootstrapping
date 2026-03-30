@@ -1,4 +1,4 @@
-interface=wlan0
+interface=wlan0_ap
 driver=nl80211
 ssid=%%WIFI_SSID%%
 hw_mode=g
