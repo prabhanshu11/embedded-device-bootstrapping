@@ -26,10 +26,16 @@ else
     curl -sSL https://install.pi-hole.net | bash
 fi
 
-# === Configure DHCP for hotspot ===
-echo "[2/2] Configuring DHCP for hotspot network..."
+# === Configure upstream DNS ===
+echo "[2/3] Setting upstream DNS (CleanBrowsing Adult Filter)..."
+# CleanBrowsing Adult Filter: blocks porn at DNS level, does NOT force
+# YouTube Restricted Mode or SafeSearch (unlike the Family filter).
+sudo pihole-FTL --config dns.upstreams '["185.228.168.10", "185.228.169.11"]'
 
-sudo pihole-FTL --config dns.interface wlan0
+# === Configure DHCP for hotspot ===
+echo "[3/3] Configuring DHCP for hotspot network..."
+
+sudo pihole-FTL --config dns.interface wlan0_ap
 sudo pihole-FTL --config dhcp.start 192.168.50.10
 sudo pihole-FTL --config dhcp.end 192.168.50.250
 sudo pihole-FTL --config dhcp.router 192.168.50.1
@@ -41,7 +47,8 @@ sudo systemctl restart pihole-FTL
 
 echo ""
 echo "=== Pi-hole Setup Complete ==="
-echo "  - DNS: listening on wlan0 (192.168.50.1:53)"
+echo "  - Upstream DNS: CleanBrowsing Adult Filter (185.228.168.10)"
+echo "  - DNS: listening on wlan0_ap (192.168.50.1:53)"
 echo "  - DHCP: 192.168.50.10 - 192.168.50.250"
 echo "  - Gateway: 192.168.50.1"
 echo "  - Web UI: http://192.168.50.1/admin"
