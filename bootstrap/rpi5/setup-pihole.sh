@@ -27,9 +27,29 @@ else
 fi
 
 # === Configure upstream DNS ===
+# ============================================================================
+# ⚠️  DNS LANDMINE — DO NOT CHANGE WITHOUT READING THIS
+# ============================================================================
+# Use CleanBrowsing ADULT Filter (.10/.11) ONLY. NEVER use Family Filter (.168).
+#
+# CleanBrowsing Family Filter (185.228.168.168 / 185.228.169.168) forces
+# YouTube into Restricted Mode at the DNS level — Google's edge servers detect
+# the DNS path and silently restrict content. The user CANNOT toggle this off.
+# It will break legitimate YouTube viewing (Sam Harris podcasts, political
+# commentary, anything age-flagged).
+#
+# This trap has been triggered TWICE already:
+#   - 2026-04-01: Earlier session set Family Filter as "extra protection"
+#   - 2026-04-09: Archer C6 migration set .168 as DHCP secondary DNS
+# Both times the user lost YouTube and had to debug from scratch.
+#
+# Adult Filter (185.228.168.10 / 185.228.169.11) gives the same porn blocking
+# WITHOUT poisoning YouTube. This is the only acceptable upstream.
+#
+# If you ever feel tempted to "add Family for more protection" — DON'T.
+# Read pi-noc/CLAUDE.md "DNS Landmine" section.
+# ============================================================================
 echo "[2/3] Setting upstream DNS (CleanBrowsing Adult Filter)..."
-# CleanBrowsing Adult Filter: blocks porn at DNS level, does NOT force
-# YouTube Restricted Mode or SafeSearch (unlike the Family filter).
 sudo pihole-FTL --config dns.upstreams '["185.228.168.10", "185.228.169.11"]'
 
 # === Configure DHCP for hotspot ===
