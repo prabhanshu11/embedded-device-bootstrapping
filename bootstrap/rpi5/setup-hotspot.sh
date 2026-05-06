@@ -1,14 +1,29 @@
 #!/bin/bash
+# ⚠️  OBSOLETE — DO NOT RUN ON FRESH FLASH ⚠️
+#
+# This script describes the pre-2026-04-10 architecture where the Pi5 acted as
+# its own WiFi access point (hostapd on wlan0_ap, 192.168.50.0/24). On 2026-04-10
+# we pivoted: Archer C6 became the primary AP, Pi5 demoted to DNS-only at
+# 192.168.0.2 on the Archer LAN. Running this script today would re-enable
+# hostapd and conflict with the Archer C6 setup.
+#
+# Kept for historical reference only. To re-enable Pi5-as-hotspot you must
+# also reverse the changes documented in:
+#   ~/.claude/projects/-home-prabhanshu-Programs/memory/feedback_pi5_dns_changes.md
+#   ~/.claude/projects/-home-prabhanshu-Programs/memory/reference_pi5_ssh.md
+#
+# --- ORIGINAL HEADER (pre-Apr-10) ---
 # Set up WiFi hotspot on Raspberry Pi 5 using hostapd + Pi-hole FTL (DHCP)
-#
-# Architecture: hostapd runs on wlan0_ap (virtual AP interface).
-# wlan0 stays free for potential STA mode (WiFi client fallback).
-# Pi-hole FTL handles DHCP on the hotspot subnet.
-#
+# hostapd runs on wlan0_ap (virtual AP interface). Pi-hole FTL handles DHCP.
 # Usage: ssh pi@<IP> 'bash -s' < bootstrap/rpi5/setup-hotspot.sh
-#   Or: ssh pi@<IP> 'WIFI_SSID=MyNet WIFI_PASSPHRASE=secret bash -s' < bootstrap/rpi5/setup-hotspot.sh
-#
-# Runs ON the Pi (not on host).
+
+echo "ERROR: setup-hotspot.sh is OBSOLETE (pre-2026-04-10 architecture)."
+echo "  Pi5 is no longer a hotspot — Archer C6 is the AP. Pi5 = DNS-only."
+echo "  See header comment for context. Refusing to run."
+echo "  If you really mean to revert architecture, edit this script to remove this guard."
+exit 2
+
+# (legacy body retained below for historical reference, but unreachable)
 
 set -e
 

@@ -8,10 +8,12 @@ This repo contains **host-side tooling** (flash SD cards, configure networks, de
 
 ## Supported Devices
 
-| Device | Profile | IP | Hostname | Use Case |
-|--------|---------|-----|----------|----------|
-| Raspberry Pi 5 | `rpi5` | 192.168.29.10 | pi-hub | WiFi hotspot, orchestrator |
+| Device | Profile | Address | Hostname | Use Case |
+|--------|---------|---------|----------|----------|
+| Raspberry Pi 5 | `rpi5` | `rpi5` (Tailscale) / 192.168.0.2 (LAN) | rpi5 | DNS-only Pi-hole on Archer-C6 network, NAS host |
 | Pi Zero 2W | `pi-zero-2w` | 10.55.0.2 (USB) | pi-keyboard | BT HID keyboard, satellite |
+
+**Pi5 architecture changed 2026-04-10.** Old `192.168.29.10` (Jio LAN) and `192.168.50.x` (Pi5 hostapd) addresses are dead. Pi5 now sits at 192.168.0.2 on the Archer C6 network as DNS-only, with Tailscale `rpi5` as the canonical name. See [reference_pi5_ssh.md](../../.claude/projects/-home-prabhanshu-Programs/memory/reference_pi5_ssh.md). The `setup-hotspot.sh`, `setup-nat.sh`, and DHCP portions of `setup-pihole.sh` describe the OBSOLETE pre-Apr-10 architecture and should not be run on a fresh flash without architecture review.
 
 ## Pipeline
 
@@ -30,11 +32,11 @@ deploy/deploy.sh            # 3. Push app code + systemd service
 # Pi Zero 2W (via USB gadget from laptop)
 ssh pi@10.55.0.2
 
-# RPi5 (via home network from desktop)
-ssh pi@192.168.29.10
+# RPi5 (Tailscale — works from anywhere on the tailnet)
+ssh pi@rpi5
 
-# RPi5 (via desktop SSH hop from laptop)
-ssh desktop "ssh pi@192.168.29.10"
+# RPi5 (LAN fallback when on Archer-C6 home WiFi)
+ssh pi@192.168.0.2
 ```
 
 ## Secrets

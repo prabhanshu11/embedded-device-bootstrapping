@@ -1,12 +1,20 @@
 #!/bin/bash
-# Set up NAT and IP forwarding for hotspot clients
+# ⚠️  OBSOLETE — DO NOT RUN ON FRESH FLASH ⚠️
 #
+# Pre-2026-04-10 NAT/forwarding for Pi5-as-hotspot. Pi5 is no longer a hotspot
+# (Archer C6 took over on 2026-04-10). Adding iptables rules here would also
+# violate the explicit constraint in feedback_pi5_dns_changes.md ("no iptables
+# tricks on the Pi5"). Kept for historical reference only.
+#
+# --- ORIGINAL HEADER ---
+# Set up NAT and IP forwarding for hotspot clients
 # Routes traffic from wlan0_ap (hotspot) to eth0 (internet uplink).
 # Persisted via netfilter-persistent.
-#
-# Usage: ssh pi@<IP> 'bash -s' < bootstrap/rpi5/setup-nat.sh
-#
-# Runs ON the Pi (not on host).
+
+echo "ERROR: setup-nat.sh is OBSOLETE (pre-2026-04-10 architecture)."
+echo "  Pi5 no longer routes traffic — see embedded-device-bootstrapping/CLAUDE.md."
+echo "  Refusing to run."
+exit 2
 
 set -e
 
