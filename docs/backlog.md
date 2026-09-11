@@ -83,3 +83,19 @@ ssh pi@IP 'bash -s' < bootstrap/rpi5/setup-filebrowser.sh
 # 5. Apps (from their own repos)
 ./deploy/deploy.sh --host pi@IP --service pibox ...
 ```
+
+## TODO: Pi 5 desktop-outage notifier (added 2026-09-11, not built)
+
+Context: the desktop (192.168.0.102, Tailscale `omarchy`/100.92.71.80) sat at a
+LUKS prompt for two hours after a power cut on 2026-09-11 and nobody knew. The
+desktop now unlocks itself (TPM2) but a watcher must live on a box that is
+always on the LAN: the Pi 5 is on the router by cable, so it sees the desktop
+even when Tailscale/WAN is down (a router power loss takes the Pi too — accepted).
+Decision record: local-bootstrapping/docs/issues/desktop-unattended-boot-2026-09-11.md
+
+- [ ] Fix the Pi's clock first: it has no NTP and shows BST. `timedatectl set-timezone Asia/Kolkata`, enable `systemd-timesyncd` (or chrony), verify `timedatectl` says synchronized.
+- [ ] Copy the Telegram config from the laptop: `~/.config/telegram-send/config` → Pi, mode 600 (same bot/chat as `~/Programs/phone-file-transfer/`).
+- [ ] systemd timer, every minute: ping 192.168.0.102 (LAN) and `omarchy` (Tailscale). Keep a small state file with the last-seen time.
+- [ ] After 5 consecutive minutes absent on BOTH paths → one Telegram message ("desktop down since HH:MM"); one message on recovery with the outage length. Never repeat while still down (state file), so a long outage is two messages, not 300.
+- [ ] Also alert if the desktop is pingable but ssh port 22 is closed for 5 min (the "stuck at unlock prompt" shape — no IP then, but a future regression might differ).
+- [ ] Bootstrap script under `bootstrap/rpi5/setup-desktop-watch.sh`, idempotent, like the other setup-*.sh here.
