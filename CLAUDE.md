@@ -39,6 +39,14 @@ ssh pi@rpi5
 ssh pi@192.168.0.2
 ```
 
+## Networking: Tailscale Stays Installed (the user, 2026-10-03)
+
+- Tailscale is **not preferred** for new features: reach devices over the home LAN first. We are actively
+  looking for a private, self-hosted alternative.
+- **Tailscale MUST remain installed and logged in on every device this repo provisions** (RPi5, Pi Zero 2W,
+  future boards). Never uninstall, disable or `tailscale logout`; never drop it from a flash/bootstrap script.
+  His words: every alternative network profile tried so far hit issues and we had to fall back to Tailscale.
+
 ## Secrets
 
 All secrets use `%%PLACEHOLDER%%` syntax in templates. Provide via:
