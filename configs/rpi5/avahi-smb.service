@@ -1,0 +1,17 @@
+<?xml version="1.0" standalone='no'?>
+<!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+<!-- Advertise the Samba share over Bonjour so the iPhone Files app lists
+     this machine under "Shared" without typing an address.
+     Source: embedded-device-bootstrapping/configs/rpi5/avahi-smb.service (copy of local-bootstrapping/system/avahi/smb.service) -->
+<service-group>
+  <name replace-wildcards="yes">%h</name>
+  <service>
+    <type>_smb._tcp</type>
+    <port>445</port>
+  </service>
+  <service>
+    <type>_device-info._tcp</type>
+    <port>0</port>
+    <txt-record>model=MacSamba</txt-record>
+  </service>
+</service-group>
