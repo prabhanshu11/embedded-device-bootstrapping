@@ -4,7 +4,7 @@
 # Mounts:
 #   - Samsung T7 SSD (exfat) -> /mnt/nas/t7
 #   - WD Elements HDD (ntfs-3g) -> /mnt/nas/elements
-#   - Seagate Portable 4 TB HDD (ntfs-3g) -> /mnt/nas/seagate (added 2026-10-08; TV Series/ lives here)
+#   - Seagate Portable 4 TB HDD (ext4, formatted 2026-10-08 by format-seagate-ext4.sh) -> /mnt/nas/seagate (TV Series/ lives here)
 #   - Android USB drive (exfat) -> /mnt/nas/android (UUID varies)
 #
 # Usage: ssh pi@<IP> 'bash -s' < bootstrap/rpi5/setup-nas-mounts.sh
@@ -20,7 +20,7 @@ echo ""
 # Known UUIDs
 T7_UUID="02F7-B675"
 ELEMENTS_UUID="B896919A969159A8"
-SEAGATE_UUID="D25E9F7C0132F192"
+SEAGATE_UUID="952b3578-2071-4c2b-b802-12eb5d2dc7bd"   # ext4 label seagate4tb
 
 # Android drive UUID varies — accept as arg or detect
 if [[ -z "$ANDROID_UUID" ]]; then
@@ -49,8 +49,8 @@ sudo mkdir -p /mnt/nas/t7 /mnt/nas/elements /mnt/nas/seagate /mnt/nas/android
 echo "[3/3] Adding fstab entries..."
 
 add_fstab_entry() {
-    local uuid="$1" mountpoint="$2" fstype="$3"
-    local line="UUID=${uuid}  ${mountpoint}  ${fstype}  defaults,nofail,uid=1000,gid=1000  0  0"
+    local uuid="$1" mountpoint="$2" fstype="$3" opts="${4:-defaults,nofail,uid=1000,gid=1000  0  0}"
+    local line="UUID=${uuid}  ${mountpoint}  ${fstype}  ${opts}"
     if grep -q "$uuid" /etc/fstab; then
         echo "  - Already in fstab: $mountpoint"
     else
@@ -67,7 +67,7 @@ fi
 
 add_fstab_entry "$T7_UUID" "/mnt/nas/t7" "exfat"
 add_fstab_entry "$ELEMENTS_UUID" "/mnt/nas/elements" "ntfs-3g"
-add_fstab_entry "$SEAGATE_UUID" "/mnt/nas/seagate" "ntfs-3g"
+add_fstab_entry "$SEAGATE_UUID" "/mnt/nas/seagate" "ext4" "defaults,nofail,noatime  0  2"   # ext4: ownership is on disk (pi:pi), no uid= option
 
 if [[ -n "$ANDROID_UUID" ]]; then
     add_fstab_entry "$ANDROID_UUID" "/mnt/nas/android" "exfat"
@@ -80,7 +80,7 @@ echo ""
 echo "=== NAS Mount Setup Complete ==="
 echo "  - T7 SSD:     /mnt/nas/t7       (exfat, UUID=$T7_UUID)"
 echo "  - Elements:   /mnt/nas/elements  (ntfs-3g, UUID=$ELEMENTS_UUID)"
-echo "  - Seagate:    /mnt/nas/seagate   (ntfs-3g 4 TB, UUID=$SEAGATE_UUID)"
+echo "  - Seagate:    /mnt/nas/seagate   (ext4 4 TB, UUID=$SEAGATE_UUID)"
 if [[ -n "$ANDROID_UUID" ]]; then
     echo "  - Android:    /mnt/nas/android   (exfat, UUID=$ANDROID_UUID)"
 else
