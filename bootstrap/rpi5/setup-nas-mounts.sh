@@ -4,6 +4,7 @@
 # Mounts:
 #   - Samsung T7 SSD (exfat) -> /mnt/nas/t7
 #   - WD Elements HDD (ntfs-3g) -> /mnt/nas/elements
+#   - Seagate Portable 4 TB HDD (ntfs-3g) -> /mnt/nas/seagate (added 2026-10-08; TV Series/ lives here)
 #   - Android USB drive (exfat) -> /mnt/nas/android (UUID varies)
 #
 # Usage: ssh pi@<IP> 'bash -s' < bootstrap/rpi5/setup-nas-mounts.sh
@@ -19,6 +20,7 @@ echo ""
 # Known UUIDs
 T7_UUID="02F7-B675"
 ELEMENTS_UUID="B896919A969159A8"
+SEAGATE_UUID="D25E9F7C0132F192"
 
 # Android drive UUID varies — accept as arg or detect
 if [[ -z "$ANDROID_UUID" ]]; then
@@ -30,11 +32,18 @@ fi
 
 # === Install filesystem packages ===
 echo "[1/3] Installing filesystem packages..."
-sudo apt install -y exfat-fuse ntfs-3g
+# Skip apt when both are present: a stale apt index (404 on security.debian.org, seen 2026-10-08)
+# must not abort the mount setup.
+if dpkg -s exfat-fuse ntfs-3g >/dev/null 2>&1; then
+    echo "  - exfat-fuse + ntfs-3g already installed"
+else
+    sudo apt-get update -qq || true
+    sudo apt install -y exfat-fuse ntfs-3g
+fi
 
 # === Create mount directories ===
 echo "[2/3] Creating mount directories..."
-sudo mkdir -p /mnt/nas/t7 /mnt/nas/elements /mnt/nas/android
+sudo mkdir -p /mnt/nas/t7 /mnt/nas/elements /mnt/nas/seagate /mnt/nas/android
 
 # === Add fstab entries ===
 echo "[3/3] Adding fstab entries..."
@@ -58,6 +67,7 @@ fi
 
 add_fstab_entry "$T7_UUID" "/mnt/nas/t7" "exfat"
 add_fstab_entry "$ELEMENTS_UUID" "/mnt/nas/elements" "ntfs-3g"
+add_fstab_entry "$SEAGATE_UUID" "/mnt/nas/seagate" "ntfs-3g"
 
 if [[ -n "$ANDROID_UUID" ]]; then
     add_fstab_entry "$ANDROID_UUID" "/mnt/nas/android" "exfat"
@@ -70,6 +80,7 @@ echo ""
 echo "=== NAS Mount Setup Complete ==="
 echo "  - T7 SSD:     /mnt/nas/t7       (exfat, UUID=$T7_UUID)"
 echo "  - Elements:   /mnt/nas/elements  (ntfs-3g, UUID=$ELEMENTS_UUID)"
+echo "  - Seagate:    /mnt/nas/seagate   (ntfs-3g 4 TB, UUID=$SEAGATE_UUID)"
 if [[ -n "$ANDROID_UUID" ]]; then
     echo "  - Android:    /mnt/nas/android   (exfat, UUID=$ANDROID_UUID)"
 else
