@@ -45,9 +45,11 @@ DESCRIPTIONS = {
                 "The 4 porn blocklists + StevenBlack ads, with CleanBrowsing Adult as the upstream DNS. "
                 "Applies to every device. Never pausable from here or anywhere."),
     "always-shop": ("Amazon shopping",
-                    "Amazon shopping domains (8 regexes). His laptop + phone, always on."),
-    "always-video-phone": ("YouTube on the phone",
-                           "All of YouTube + the DNS-over-HTTPS escape hatches. His phone only, always on."),
+                    "Amazon shopping domains (8 regexes). Network-wide via the 192.168.0.0/24 client; infrastructure and the work laptop exempt. Always on."),
+    "always-video-phone": ("YouTube (every device except the laptop)",
+                           "All of YouTube + the DNS-over-HTTPS escape hatches. Network-wide via the 192.168.0.0/24 "
+                           "client; the laptop keeps its own entry (Shorts-only via Chrome policy), infrastructure and "
+                           "the work laptop are exempt. Always on."),
     "bedtime-feeds": ("Bedtime: feeds",
                       "Netflix, YouTube, Instagram, X, Reddit, TikTok, streaming + DoH. 00:00-06:00 on laptop + "
                       "phone (switched on and off by the bedtime engine on the laptop)."),
