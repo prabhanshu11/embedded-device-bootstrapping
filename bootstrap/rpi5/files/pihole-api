@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""pihole-api METHOD PATH [JSON]  —  one authenticated call to the local Pi-hole v6 API.
+
+Authenticates with FTL's own CLI password (/etc/pihole/cli_pw, written by FTL while
+webserver.api.cli_pw = true), so no admin password is needed here and none lives on the
+laptop. Opens a session, makes the call, closes the session (max_sessions is 16).
+Installed by bootstrap/rpi5/setup-pihole-lock.sh. Used by star-trek-camera's bedtime engine
+over `ssh pi-lan pihole-api ...` (BEDTIME_PIHOLE_TRANSPORT=ssh).
+"""
+import json
+import sys
+import urllib.error
+import urllib.request
+
+BASE = "http://127.0.0.1/api"
+
+
+def req(method, path, body=None, sid=None):
+    headers = {"Content-Type": "application/json"}
+    if sid:
+        headers["X-FTL-SID"] = sid
+    r = urllib.request.Request(BASE + path.removeprefix("/api"), method=method, headers=headers,
+                               data=None if body is None else json.dumps(body).encode())
+    try:
+        with urllib.request.urlopen(r, timeout=15) as resp:
+            raw = resp.read().decode()
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode()
+        try:
+            return {"http_error": e.code, **json.loads(raw or "{}")}
+        except ValueError:
+            return {"http_error": e.code, "body": raw[:300]}
+    return json.loads(raw or "{}")
+
+
+def main():
+    if len(sys.argv) < 3:
+        print(__doc__, file=sys.stderr)
+        return 2
+    method, path = sys.argv[1].upper(), sys.argv[2]
+    body = json.loads(sys.argv[3]) if len(sys.argv) > 3 else None
+    try:
+        pw = open("/etc/pihole/cli_pw").read().strip()
+    except OSError as e:
+        print(f"cannot read /etc/pihole/cli_pw: {e} (is this user in group pihole?)", file=sys.stderr)
+        return 3
+    auth = req("POST", "/auth", {"password": pw})
+    sid = (auth.get("session") or {}).get("sid")
+    if not sid:
+        print(f"auth failed: {json.dumps(auth)[:300]}", file=sys.stderr)
+        return 4
+    try:
+        out = req(method, path, body, sid)
+    finally:
+        req("DELETE", "/auth", None, sid)
+    print(json.dumps(out))
+    return 1 if "http_error" in out else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

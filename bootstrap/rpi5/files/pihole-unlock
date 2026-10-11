@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# pihole-unlock request|cancel|status|tick  —  the 6-hour lock on the Pi-hole admin password.
+#
+# His words 2026-10-11: "Lock it such that it takes 6 hours after a request."
+# The admin password lives only in /root/vault/pihole-admin (0600). `request` records the
+# time; `tick` (systemd timer, every 5 min) sends the password to his Telegram once 6 hours
+# have passed, then clears the request. `cancel` clears it early. Everything is logged to
+# /root/vault/unlock.log.
+#
+# Honest limit: user pi has NOPASSWD sudo, so `sudo cat /root/vault/pihole-admin` is possible.
+# This is the designed path; that one is the promise he made to himself.
+set -euo pipefail
+VAULT=/root/vault
+REQ=$VAULT/unlock-request
+LOG=$VAULT/unlock.log
+DELAY_H=${PIHOLE_UNLOCK_DELAY_H:-6}
+SECRET=${PIHOLE_UNLOCK_SECRET:-$VAULT/pihole-admin}
+NAME=${PIHOLE_UNLOCK_NAME:-Pi-hole admin}
+
+need_root() { [ "$(id -u)" = 0 ] || exec sudo -n "$0" "$@"; }
+log() { printf '%s %s\n' "$(date -Is)" "$*" >> "$LOG"; }
+
+telegram() {  # telegram "text"
+    # shellcheck disable=SC1091
+    . "$VAULT/telegram.env"
+    curl -fsS -m 20 "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+        --data-urlencode "chat_id=${CHAT_ID}" --data-urlencode "text=$1" >/dev/null
+}
+
+cmd=${1:-status}
+need_root "$@"
+mkdir -p "$VAULT"; chmod 700 "$VAULT"
+case "$cmd" in
+  request)
+    if [ -f "$REQ" ]; then echo "already requested at $(cat "$REQ")"; "$0" status; exit 0; fi
+    date -Is > "$REQ"
+    log "request ($NAME) by ${SUDO_USER:-root} from ${SSH_CLIENT:-local}"
+    due=$(date -d "+${DELAY_H} hours" '+%a %H:%M')
+    telegram "🔒 ${NAME} password requested. It reaches you at ${due} (${DELAY_H} h) unless you cancel: ssh pi-lan pihole-unlock cancel" || true
+    echo "requested; the password arrives on Telegram at $due";;
+  cancel)
+    if [ -f "$REQ" ]; then rm -f "$REQ"; log "cancel by ${SUDO_USER:-root}"; echo "cancelled"; else echo "no request pending"; fi;;
+  status)
+    if [ -f "$REQ" ]; then
+        at=$(cat "$REQ"); due=$(date -d "$at +${DELAY_H} hours" -Is)
+        echo "pending: requested $at, releases $due"
+    else echo "no request pending"; fi
+    tail -n 3 "$LOG" 2>/dev/null || true;;
+  tick)
+    [ -f "$REQ" ] || exit 0
+    at=$(date -d "$(cat "$REQ")" +%s); now=$(date +%s)
+    if [ $((now - at)) -ge $((DELAY_H * 3600)) ]; then
+        pw=$(cat "$SECRET")
+        if telegram "🔓 ${NAME} password (requested $(cat "$REQ")): ${pw}"; then
+            rm -f "$REQ"; log "released ($NAME) to Telegram"
+        else
+            log "release failed: telegram unreachable, will retry"
+        fi
+    fi;;
+  *) echo "usage: pihole-unlock request|cancel|status|tick" >&2; exit 2;;
+esac

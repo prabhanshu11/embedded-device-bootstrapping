@@ -1,0 +1,6 @@
+[Unit]
+Description=Pi-hole admin password 6-hour release check (pihole-unlock tick)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pihole-unlock tick
