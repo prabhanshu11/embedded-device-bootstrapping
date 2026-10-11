@@ -1,0 +1,143 @@
+#!/usr/bin/env python3
+"""pihole-pause GROUP MINUTES [REASON...] | resume GROUP | status | expire
+
+The bounded override (his 2026-10-11 words: "except porn, everything else, I should be able
+to ask an agent to override, for eg, I want a claude agent to research some projects and
+it's late night … won't be able to access the amazon website").
+
+Disables ONE of our Pi-hole groups for MINUTES (max 240), records who/why/until in
+/var/lib/pihole-pause/<group>.json, tells his Telegram, and the `expire` tick (systemd
+timer, every minute) re-enables it. Never the Default group (porn + ads lists), never the
+global blocking switch, never a list. Runs as root (sudo -n) so the state dir and the
+Telegram token (/root/vault/telegram.env) stay root-only.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+
+GROUPS = ("always-shop", "always-video-phone", "bedtime-feeds", "bedtime-full")
+MAX_MIN = 240
+STATE = "/var/lib/pihole-pause"
+LOG = os.path.join(STATE, "pause.log")
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def api(method, path, body=None):
+    cmd = ["/usr/local/bin/pihole-api", method, path] + ([json.dumps(body)] if body is not None else [])
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        raise SystemExit(f"pihole-api failed: {r.stderr.strip()[:300]}")
+    return json.loads(r.stdout or "{}")
+
+
+def set_group(name, enabled):
+    g = next((g for g in api("GET", "/api/groups").get("groups", []) if g["name"] == name), None)
+    if g is None:
+        raise SystemExit(f"group {name} not on the Pi-hole")
+    return api("PUT", f"/api/groups/{name}", {"name": name, "comment": g.get("comment") or "", "enabled": enabled})
+
+
+def log(line):
+    os.makedirs(STATE, exist_ok=True)
+    with open(LOG, "a") as f:
+        f.write(f"{datetime.now(IST).isoformat(timespec='seconds')} {line}\n")
+
+
+def telegram(text):
+    env = {}
+    try:
+        for ln in open("/root/vault/telegram.env"):
+            if "=" in ln and not ln.startswith("#"):
+                k, v = ln.strip().split("=", 1)
+                env[k] = v.strip().strip('"')
+        subprocess.run(["curl", "-fsS", "-m", "15", f"https://api.telegram.org/bot{env['BOT_TOKEN']}/sendMessage",
+                        "--data-urlencode", f"chat_id={env['CHAT_ID']}", "--data-urlencode", f"text={text}"],
+                       capture_output=True, timeout=20)
+    except Exception as e:                                   # noqa: BLE001 — Telegram is best effort
+        log(f"telegram failed: {e}")
+
+
+def state_path(group):
+    return os.path.join(STATE, f"{group}.json")
+
+
+def status():
+    out = {}
+    if os.path.isdir(STATE):
+        for g in GROUPS:
+            p = state_path(g)
+            if os.path.exists(p):
+                out[g] = json.load(open(p))
+    return out
+
+
+def who():
+    return os.environ.get("SUDO_USER") or os.environ.get("USER") or "root"
+
+
+def pause(group, minutes, reason):
+    if group not in GROUPS:
+        raise SystemExit(f"refused: {group!r} is not pausable (porn/ads lists and the global switch never are)")
+    if not 1 <= minutes <= MAX_MIN:
+        raise SystemExit(f"refused: minutes must be 1..{MAX_MIN}")
+    if not reason.strip():
+        raise SystemExit("refused: a reason is required (it is logged and sent to Telegram)")
+    until = datetime.now(IST) + timedelta(minutes=minutes)
+    rec = {"group": group, "until": until.isoformat(timespec="seconds"), "reason": reason.strip(), "by": who(),
+           "from": os.environ.get("SSH_CLIENT", "local").split(" ")[0], "since": datetime.now(IST).isoformat(timespec="seconds")}
+    set_group(group, False)
+    os.makedirs(STATE, exist_ok=True)
+    with open(state_path(group), "w") as f:
+        json.dump(rec, f)
+    log(f"pause {group} {minutes}min by {rec['by']} from {rec['from']}: {rec['reason']}")
+    telegram(f"⏸ Pi-hole {group} paused {minutes} min (until {until.strftime('%H:%M')}) by {rec['by']}: {rec['reason']}")
+    print(json.dumps(rec))
+
+
+def resume(group, why="resume"):
+    if group not in GROUPS:
+        raise SystemExit(f"refused: {group!r} is not ours")
+    set_group(group, True)
+    p = state_path(group)
+    rec = json.load(open(p)) if os.path.exists(p) else {}
+    if os.path.exists(p):
+        os.remove(p)
+    log(f"{why} {group} (was: {rec.get('reason', '-')})")
+    if why == "resume":
+        telegram(f"▶ Pi-hole {group} resumed by {who()}")
+    print(json.dumps({"group": group, "enabled": True}))
+
+
+def expire():
+    now = datetime.now(IST)
+    for g, rec in status().items():
+        if datetime.fromisoformat(rec["until"]) <= now:
+            resume(g, why="expired")
+            telegram(f"▶ Pi-hole {g} back on (pause expired: {rec.get('reason', '')})")
+
+
+def main(argv):
+    if os.geteuid() != 0:
+        os.execvp("sudo", ["sudo", "-n", sys.argv[0], *argv])
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__)
+        return 2
+    if argv[0] == "status":
+        print(json.dumps(status(), indent=1))
+    elif argv[0] == "expire":
+        expire()
+    elif argv[0] == "resume" and len(argv) == 2:
+        resume(argv[1])
+    elif len(argv) >= 2:
+        pause(argv[0], int(argv[1]), " ".join(argv[2:]))
+    else:
+        print(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

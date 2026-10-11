@@ -1,0 +1,6 @@
+[Unit]
+Description=Re-enable expired Pi-hole group pauses (pihole-pause expire)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pihole-pause expire

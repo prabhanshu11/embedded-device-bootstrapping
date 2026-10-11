@@ -1,0 +1,10 @@
+[Unit]
+Description=Pi-hole group pause expiry check (every minute)
+
+[Timer]
+OnCalendar=*:*:00
+AccuracySec=10s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
