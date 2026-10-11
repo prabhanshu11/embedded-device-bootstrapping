@@ -1,0 +1,16 @@
+[Unit]
+Description=pihole-ui: touch web page for the Pi-hole switches and the blocked trail (:8780)
+After=network-online.target pihole-FTL.service
+Wants=network-online.target
+
+[Service]
+User=pi
+Group=pihole
+ExecStart=/usr/local/bin/pihole-ui
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+# No NoNewPrivileges: the page calls `sudo -n pihole-pause|pihole-unlock` (the bounded tools).
+
+[Install]
+WantedBy=multi-user.target
