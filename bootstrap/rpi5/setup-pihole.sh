@@ -16,6 +16,10 @@ set -e
 echo "=== RPi5 Pi-hole Setup ==="
 echo ""
 
+# Local time (his 2026-10-23 call): the image came up Europe/London (BST), which put a 05:20 IST pause
+# timer 8 h late on 10-15. Pi-hole schedules and logs are read in IST.
+sudo timedatectl set-timezone Asia/Kolkata
+
 # === Install Pi-hole ===
 echo "[1/2] Installing Pi-hole..."
 if command -v pihole &>/dev/null; then

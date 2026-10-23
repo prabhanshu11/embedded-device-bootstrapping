@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """pihole-pause GROUP MINUTES [REASON...] | resume GROUP | status | expire
+       pihole-pause shop [REASON...]      (always-shop for SHOP_MIN = 20 min: his 10-23 "15-20m timeout")
 
 The bounded override (his 2026-10-11 words: "except porn, everything else, I should be able
 to ask an agent to override, for eg, I want a claude agent to research some projects and
@@ -22,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 GROUPS = ("always-shop", "always-video-phone", "bedtime-feeds", "bedtime-full")
 BEDTIME = ("bedtime-feeds", "bedtime-full")
 MAX_MIN = 240
+SHOP_MIN = 20
 STATE = "/var/lib/pihole-pause"
 LOG = os.path.join(STATE, "pause.log")
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -158,6 +160,8 @@ def main(argv):
         print(json.dumps(status(), indent=1))
     elif argv[0] == "expire":
         expire()
+    elif argv[0] == "shop":
+        pause("always-shop", SHOP_MIN, " ".join(argv[1:]) or "shopping")
     elif argv[0] == "resume" and len(argv) == 2:
         resume(argv[1])
     elif len(argv) >= 2:

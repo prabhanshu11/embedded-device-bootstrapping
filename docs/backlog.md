@@ -93,7 +93,7 @@ always on the LAN: the Pi 5 is on the router by cable, so it sees the desktop
 even when Tailscale/WAN is down (a router power loss takes the Pi too — accepted).
 Decision record: local-bootstrapping/docs/issues/desktop-unattended-boot-2026-09-11.md
 
-- [ ] Fix the Pi's clock first: it has no NTP and shows BST. `timedatectl set-timezone Asia/Kolkata`, enable `systemd-timesyncd` (or chrony), verify `timedatectl` says synchronized.
+- [x] (2026-10-23: Asia/Kolkata set, NTP synchronized; in setup-pihole.sh) Fix the Pi's clock first: it has no NTP and shows BST. `timedatectl set-timezone Asia/Kolkata`, enable `systemd-timesyncd` (or chrony), verify `timedatectl` says synchronized.
 - [ ] Copy the Telegram config from the laptop: `~/.config/telegram-send/config` → Pi, mode 600 (same bot/chat as `~/Programs/phone-file-transfer/`).
 - [ ] systemd timer, every minute: ping 192.168.0.102 (LAN) and `omarchy` (Tailscale). Keep a small state file with the last-seen time.
 - [ ] After 5 consecutive minutes absent on BOTH paths → one Telegram message ("desktop down since HH:MM"); one message on recovery with the outage length. Never repeat while still down (state file), so a long outage is two messages, not 300.

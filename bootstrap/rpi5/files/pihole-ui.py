@@ -532,8 +532,10 @@ function renderGroups(){
     let btns = "";
     if (g.pausable) {
       btns = `<div class="btns">
-        <button class="warn" onclick="showForm('${g.name}',30)">&#10074;&#10074; Pause 30 min</button>
-        <button class="warn" onclick="showForm('${g.name}',120)">&#10074;&#10074; Pause 2 h</button>
+        ${g.name === "always-shop"  /* his 10-23: Amazon gets a 15-20 min window for real shopping */
+          ? `<button class="warn" onclick="showForm('${g.name}',20)">&#10074;&#10074; Shop 20 min</button>`
+          : `<button class="warn" onclick="showForm('${g.name}',30)">&#10074;&#10074; Pause 30 min</button>
+        <button class="warn" onclick="showForm('${g.name}',120)">&#10074;&#10074; Pause 2 h</button>`}
         <button onclick="showForm('${g.name}',60)">Pause&hellip;</button>
         ${g.pause ? `<button class="primary" onclick="resume('${g.name}')">&#9654; Resume now</button>` : ""}
       </div>
@@ -576,7 +578,8 @@ function renderRest(){
   const errs = S.errors || [];
   $("#err").className = "err" + (errs.length ? " show" : ""); $("#err").textContent = errs.length ? "Some reads failed: " + errs.join(" | ") : "";
 }
-function showForm(name, m){ openForm = name; renderGroups(); const i = $("#min-" + name); i.value = m; $("#why-" + name).focus(); }
+function showForm(name, m){ openForm = name; renderGroups(); const i = $("#min-" + name); i.value = m; const w = $("#why-" + name);
+  if (name === "always-shop" && !w.value) w.value = "shopping"; w.focus(); }
 function hideForm(){ openForm = null; renderGroups(); }
 async function pause(name){
   const m = parseInt($("#min-" + name).value, 10), w = $("#why-" + name).value.trim();
