@@ -7,7 +7,8 @@ it's late night … won't be able to access the amazon website").
 
 Disables ONE of our Pi-hole groups for MINUTES (max 240), records who/why/until in
 /var/lib/pihole-pause/<group>.json, tells his Telegram, and the `expire` tick (systemd
-timer, every minute) re-enables it. Never the Default group (porn + ads lists), never the
+timer, every minute) puts it back to its scheduled state (bedtime groups: on only 00:00-06:00 IST;
+the tick also switches off a bedtime group left on after 06:05, the laptop-asleep failsafe). Never the Default group (porn + ads lists), never the
 global blocking switch, never a list. Runs as root (sudo -n) so the state dir and the
 Telegram token (/root/vault/telegram.env) stay root-only.
 """
@@ -19,6 +20,7 @@ import time
 from datetime import datetime, timedelta, timezone
 
 GROUPS = ("always-shop", "always-video-phone", "bedtime-feeds", "bedtime-full")
+BEDTIME = ("bedtime-feeds", "bedtime-full")
 MAX_MIN = 240
 STATE = "/var/lib/pihole-pause"
 LOG = os.path.join(STATE, "pause.log")
@@ -58,6 +60,14 @@ def telegram(text):
                        capture_output=True, timeout=20)
     except Exception as e:                                   # noqa: BLE001 — Telegram is best effort
         log(f"telegram failed: {e}")
+
+
+def scheduled_on(group, now):
+    """The state a group should be in when nobody is overriding it. The bedtime groups belong to the
+    laptop's engine (on at bed_by 00:00, late N shifts it to 02:00 at most; off at release 06:00);
+    outside 00:00-06:00 they are off. 2026-10-15: expiry blindly re-enabled bedtime-full at 06:30
+    and it blocked Spotify/Zerodha all morning."""
+    return group not in BEDTIME or now.hour < 6
 
 
 def state_path(group):
@@ -100,7 +110,8 @@ def pause(group, minutes, reason):
 def resume(group, why="resume"):
     if group not in GROUPS:
         raise SystemExit(f"refused: {group!r} is not ours")
-    set_group(group, True)
+    on = scheduled_on(group, datetime.now(IST))
+    set_group(group, on)
     p = state_path(group)
     rec = json.load(open(p)) if os.path.exists(p) else {}
     if os.path.exists(p):
@@ -108,15 +119,33 @@ def resume(group, why="resume"):
     log(f"{why} {group} (was: {rec.get('reason', '-')})")
     if why == "resume":
         telegram(f"▶ Pi-hole {group} resumed by {who()}")
-    print(json.dumps({"group": group, "enabled": True}))
+    print(json.dumps({"group": group, "enabled": on}))
+    return on
+
+
+def release_stale_bedtime(now):
+    """Daytime failsafe. The engine releases the bedtime groups only on a 06:xx tick of the laptop's
+    timer; when the laptop sleeps through that hour they stayed on all day (10-12, 10-19, 10-21,
+    10-23: Google, Gmail, Meet, Spotify, Zerodha blocked into the evening). The Pi owns the release."""
+    if not (now.hour > 6 or (now.hour == 6 and now.minute >= 5)) or (now.hour == 23 and now.minute >= 55):
+        return
+    paused = status()
+    for g in api("GET", "/api/groups").get("groups", []):
+        if g["name"] in BEDTIME and g.get("enabled") and g["name"] not in paused:
+            set_group(g["name"], False)
+            log(f"failsafe released {g['name']} at {now.strftime('%H:%M')} (still on after 06:00)")
+            telegram(f"🔓 Pi-hole {g['name']} was still on at {now.strftime('%H:%M')} (bedtime release missed, "
+                     f"laptop asleep at 06:xx?); switched off")
 
 
 def expire():
     now = datetime.now(IST)
     for g, rec in status().items():
         if datetime.fromisoformat(rec["until"]) <= now:
-            resume(g, why="expired")
-            telegram(f"▶ Pi-hole {g} back on (pause expired: {rec.get('reason', '')})")
+            on = resume(g, why="expired")
+            telegram(f"▶ Pi-hole {g} {'back on' if on else 'stays off (outside bedtime)'} "
+                     f"(pause expired: {rec.get('reason', '')})")
+    release_stale_bedtime(now)
 
 
 def main(argv):
