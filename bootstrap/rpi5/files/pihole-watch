@@ -4,7 +4,7 @@
 The 2026-10-23 review (star-trek-camera docs/computer/PIHOLE-REVIEW-2026-10-23.md): 14 incidents in 23 days and he
 found every one himself; no alarm ever fired. Run every 5 minutes by pihole-watch.timer. Two checks:
 
-1. Retry storm: one domain blocked >= STORM times in the last window from one client, when the rule is NOT one of our
+1. Retry storm: one domain blocked >= STORM (6) times in the last window from one client, when the rule is NOT one of our
    deliberate leisure rows (comment = the bedtime COMMENT) and the name does not look like a tracker. Software that
    keeps asking for a blocked name is software that is failing (184 bridge.claudeusercontent.com blocks in 40 min on
    10-15). Simulated on 10-17..10-24 after the blocklist change: zero alarms. One message per domain per COOLDOWN_H.
@@ -26,13 +26,13 @@ FTL_DB = "file:/etc/pihole/pihole-FTL.db?mode=ro"
 GRAVITY_DB = "file:/etc/pihole/gravity.db?mode=ro"
 STATE = "/var/lib/pihole-watch/state.json"
 OUR_COMMENT = "st-computer-bedtime (star-trek-camera H7); managed by computer/bedtime/pihole.py"
-STORM = 10
+STORM = 6                              # his 10-24: "Make it 6 or more times"
 COOLDOWN_H = 12
 OFF_H = 3
 BLOCKED = (1, 4, 5, 9, 10, 11)          # gravity, regex, exact deny (+ their CNAME forms)
 TRACKER = re.compile(r"analytic|telemetry|beacon|metrics\.|measurement|tracking|pixel|doubleclick|adservice|"
                      r"googleads|syndication|adsystem|siftscience|unity3d|clarity\.ms|newrelic|demdex|rlcdn|"
-                     r"firebaselogging|datadoghq|(^|\.)ads?[.-]")   # never bare "ads." (downloads.claude.ai)
+                     r"firebaselogging|datadoghq|tagmanager|(^|\.)ads?[.-]")   # never bare "ads." (downloads.claude.ai)
 NAMES = {"192.168.0.105": "laptop", "192.168.0.103": "desktop", "192.168.0.102": "work laptop",
          "192.168.0.101": "C50 (desktop path)", "192.168.0.100": "camera"}
 IST = timezone(timedelta(hours=5, minutes=30))
