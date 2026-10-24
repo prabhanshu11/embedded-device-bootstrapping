@@ -1,0 +1,6 @@
+[Unit]
+Description=Telegram when a Pi-hole block probably broke something (pihole-watch)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pihole-watch

@@ -1,0 +1,122 @@
+#!/usr/bin/env python3
+"""pihole-watch [--dry-run] [--minutes N]: tell his Telegram when a Pi-hole block probably broke something.
+
+The 2026-10-23 review (star-trek-camera docs/computer/PIHOLE-REVIEW-2026-10-23.md): 14 incidents in 23 days and he
+found every one himself; no alarm ever fired. Run every 5 minutes by pihole-watch.timer. Two checks:
+
+1. Retry storm: one domain blocked >= STORM times in the last window from one client, when the rule is NOT one of our
+   deliberate leisure rows (comment = the bedtime COMMENT) and the name does not look like a tracker. Software that
+   keeps asking for a blocked name is software that is failing (184 bridge.claudeusercontent.com blocks in 40 min on
+   10-15). Simulated on 10-17..10-24 after the blocklist change: zero alarms. One message per domain per COOLDOWN_H.
+2. Global blocking off with no timer for > OFF_H hours (10-02: an emergency switch-off stayed off nine days). Agents
+   may switch it off (his 10-23 words: "agents are what help me recover"); this only says it is still off.
+
+Read-only on Pi-hole: it reads the FTL database and the blocking state, it never changes a rule.
+"""
+import json
+import os
+import re
+import sqlite3
+import subprocess
+import sys
+import time
+from datetime import datetime, timedelta, timezone
+
+FTL_DB = "file:/etc/pihole/pihole-FTL.db?mode=ro"
+GRAVITY_DB = "file:/etc/pihole/gravity.db?mode=ro"
+STATE = "/var/lib/pihole-watch/state.json"
+OUR_COMMENT = "st-computer-bedtime (star-trek-camera H7); managed by computer/bedtime/pihole.py"
+STORM = 10
+COOLDOWN_H = 12
+OFF_H = 3
+BLOCKED = (1, 4, 5, 9, 10, 11)          # gravity, regex, exact deny (+ their CNAME forms)
+TRACKER = re.compile(r"analytic|telemetry|beacon|metrics\.|measurement|tracking|pixel|doubleclick|adservice|"
+                     r"googleads|syndication|adsystem|siftscience|unity3d|clarity\.ms|newrelic|demdex|rlcdn|"
+                     r"firebaselogging|datadoghq|(^|\.)ads?[.-]")   # never bare "ads." (downloads.claude.ai)
+NAMES = {"192.168.0.105": "laptop", "192.168.0.103": "desktop", "192.168.0.102": "work laptop",
+         "192.168.0.101": "C50 (desktop path)", "192.168.0.100": "camera"}
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def telegram(text, dry):
+    if dry:
+        print("TELEGRAM:", text)
+        return
+    env = {}
+    for ln in open("/root/vault/telegram.env"):
+        if "=" in ln and not ln.startswith("#"):
+            k, v = ln.strip().split("=", 1)
+            env[k] = v.strip().strip('"')
+    subprocess.run(["curl", "-fsS", "-m", "15", f"https://api.telegram.org/bot{env['BOT_TOKEN']}/sendMessage",
+                    "--data-urlencode", f"chat_id={env['CHAT_ID']}", "--data-urlencode", f"text={text}"],
+                   capture_output=True, timeout=20)
+
+
+def our_regexes():
+    con = sqlite3.connect(GRAVITY_DB, uri=True)
+    rows = con.execute("SELECT domain FROM domainlist WHERE type = 3 AND enabled = 1 AND comment = ?", (OUR_COMMENT,))
+    out = []
+    for (d,) in rows:
+        try:
+            out.append(re.compile(d))
+        except re.error:
+            pass
+    return out
+
+
+def storms(minutes):
+    since = time.time() - minutes * 60
+    con = sqlite3.connect(FTL_DB, uri=True, timeout=10)
+    q = (f"SELECT client, domain, status, count(*) FROM queries WHERE timestamp > ? AND status IN "
+         f"({','.join(map(str, BLOCKED))}) GROUP BY client, domain HAVING count(*) >= ?")
+    return con.execute(q, (since, STORM)).fetchall()
+
+
+def blocking():
+    r = subprocess.run(["/usr/local/bin/pihole-api", "GET", "/api/dns/blocking"], capture_output=True, text=True,
+                       timeout=30)
+    return json.loads(r.stdout or "{}")
+
+
+def main(argv):
+    dry = "--dry-run" in argv
+    minutes = int(argv[argv.index("--minutes") + 1]) if "--minutes" in argv else 5
+    state = json.load(open(STATE)) if os.path.exists(STATE) else {}
+    sent = state.setdefault("sent", {})
+    now = time.time()
+    ours = our_regexes()
+    for client, domain, status, n in storms(minutes):
+        if TRACKER.search(domain) or any(rx.search(domain) for rx in ours):
+            continue
+        key = f"{client} {domain}"
+        if now - sent.get(key, 0) < COOLDOWN_H * 3600:
+            continue
+        sent[key] = now
+        how = "a regex rule" if status in (4, 10) else "a blocklist" if status in (1, 9) else "an exact deny"
+        telegram(f"⚠ Pi-hole blocked {domain} {n}× in {minutes} min from the {NAMES.get(client, client)} ({how}). "
+                 f"Something keeps retrying it: if work broke, open http://192.168.0.2:8780 (Why?) or ask an agent "
+                 f"to allow it.", dry)
+    b = blocking()
+    if b.get("blocking") == "disabled" and not b.get("timer"):
+        off_since = state.get("off_since") or now
+        state["off_since"] = off_since
+        if now - off_since > OFF_H * 3600 and now - state.get("off_told", 0) > COOLDOWN_H * 3600:
+            state["off_told"] = now
+            since = datetime.fromtimestamp(off_since, IST).strftime("%m-%d %H:%M")
+            telegram(f"⚠ Pi-hole blocking has been OFF since {since} with no timer (porn lists too). "
+                     f"Turn it back on: ssh pi-lan pihole enable", dry)
+    else:
+        state.pop("off_since", None)
+    state["sent"] = {k: v for k, v in sent.items() if now - v < 7 * 86400}
+    if not dry:
+        os.makedirs(os.path.dirname(STATE), exist_ok=True)
+        with open(STATE + ".tmp", "w") as f:
+            json.dump(state, f)
+        os.replace(STATE + ".tmp", STATE)
+    return 0
+
+
+if __name__ == "__main__":
+    if os.geteuid() != 0:
+        os.execvp("sudo", ["sudo", "-n", sys.argv[0], *sys.argv[1:]])
+    sys.exit(main(sys.argv[1:]))
