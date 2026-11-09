@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """pihole-watch [--dry-run] [--minutes N]: tell his Telegram when a Pi-hole block probably broke something.
 
-The 2026-10-23 review (star-trek-camera docs/computer/PIHOLE-REVIEW-2026-10-23.md): 14 incidents in 23 days and he
+The 2026-10-23 review (local-bootstrapping docs/pihole/PIHOLE-REVIEW-2026-10-23.md): 14 incidents in 23 days and he
 found every one himself; no alarm ever fired. Run every 5 minutes by pihole-watch.timer. Two checks:
 
 1. Retry storm: one domain blocked >= STORM (6) times in the last window from one client, when the rule is NOT one of our
