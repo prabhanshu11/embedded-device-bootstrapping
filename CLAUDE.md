@@ -10,7 +10,7 @@ This repo contains **host-side tooling** (flash SD cards, configure networks, de
 
 | Device | Profile | Address | Hostname | Use Case |
 |--------|---------|---------|----------|----------|
-| Raspberry Pi 5 | `rpi5` | `rpi5` (Tailscale) / 192.168.0.2 (LAN) | rpi5 | DNS-only Pi-hole on Archer-C6 network, NAS host |
+| Raspberry Pi 5 | `rpi5` | 192.168.0.2 (LAN) / 10.77.0.4 (wg-vdi VPS relay, since 2026-11-09) / `rpi5` 100.124.200.77 (Tailscale, backup) | rpi5 | DNS-only Pi-hole on Archer-C6 network, NAS host |
 | Pi Zero 2W | `pi-zero-2w` | 10.55.0.2 (USB) | pi-keyboard | BT HID keyboard, satellite |
 
 **Pi5 architecture changed 2026-04-10.** Old `192.168.29.10` (Jio LAN) and `192.168.50.x` (Pi5 hostapd) addresses are dead. Pi5 now sits at 192.168.0.2 on the Archer C6 network as DNS-only, with Tailscale `rpi5` as the canonical name. See [reference_pi5_ssh.md](../../.claude/projects/-home-prabhanshu-Programs/memory/reference_pi5_ssh.md). The `setup-hotspot.sh`, `setup-nat.sh`, and DHCP portions of `setup-pihole.sh` describe the OBSOLETE pre-Apr-10 architecture and should not be run on a fresh flash without architecture review.
@@ -32,12 +32,22 @@ deploy/deploy.sh            # 3. Push app code + systemd service
 # Pi Zero 2W (via USB gadget from laptop)
 ssh pi@10.55.0.2
 
-# RPi5 (Tailscale — works from anywhere on the tailnet)
-ssh pi@rpi5
+# RPi5 from the laptop/desktop, ANY network: one name, channel picked in his order
+# (LAN -> VPS relay 10.77.0.4 -> relay via desktop -> Tailscale -> Tailscale via desktop)
+# by local-bootstrapping dotfiles/local-bin/home-route + dotfiles/ssh/home-routes.conf
+ssh pi5            # also: ssh nas; sftp://pi5/... in Thunar; `home-route status`
 
-# RPi5 (LAN fallback when on Archer-C6 home WiFi)
-ssh pi@192.168.0.2
+# RPi5 direct, when you know the network
+ssh pi@192.168.0.2      # home LAN (Archer C6)
+ssh pi@10.77.0.4        # wg-vdi relay (self-hosted, hub on the VPS)
+ssh pi@rpi5             # Tailscale (backup only)
 ```
+
+**wg-vdi on the Pi (2026-11-09, his yes in Kanpur):** the Pi is a member of the self-hosted
+WireGuard relay at 10.77.0.4, so the NAS is reachable away from home without the desktop being
+on. Set up by local-bootstrapping `scripts/vdi/setup-wg-vdi.sh pi` (wireguard-tools from apt,
+`wg-quick@wg-vdi`, `wg-vdi-heal.timer` every 30 s); the hub peer is in vps_bootstrap
+`wireguard/peers.conf`. A fresh flash re-runs that script and puts the new public key there.
 
 ## Networking: Tailscale Stays Installed (the user, 2026-10-03)
 
